@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "catalog": "MOAI Flycast",
+  "systems": ["Dreamcast", "Naomi", "Naomi 2", "Atomiswave"],
+  "games": []
+}
