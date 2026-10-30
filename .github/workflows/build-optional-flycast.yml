@@ -1,0 +1,175 @@
+name: Publicar motor Flycast TV opcional para MOAI
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-optional-flycast.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Obtener parches del proyecto MOAI
+        uses: actions/checkout@v4
+        with:
+          path: moai-project
+      - name: Obtener motor Flycast oficial
+        uses: actions/checkout@v4
+        with:
+          repository: flyinghead/flycast
+          ref: master
+          fetch-depth: 0
+          submodules: recursive
+          path: flycast-src
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      # Instalar Gradle de forma independiente: no ejecutar un wrapper JAR no validado.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          validate-wrappers: false
+      - name: Preparar Android SDK y herramientas nativas
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake libcurl4-openssl-dev
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "ndk;29.0.14206865" "cmake;3.22.1"
+      - name: Preparar firma temporal y paquete independiente
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("flycast-src/shell/android-studio/flycast/build.gradle.kts")
+          s = p.read_text()
+          assert 'signingConfig = signingConfigs.getByName("release")' in s
+          s = s.replace('signingConfig = signingConfigs.getByName("release")', 'signingConfig = signingConfigs.getByName("debug")')
+          assert 'applicationId = "com.flycast.emulator"' in s
+          s = s.replace('applicationId = "com.flycast.emulator"', 'applicationId = "com.moai.flycast.experimental"')
+          p.write_text(s)
+          PY
+      - name: Adaptar selector de carpetas para Android TV
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("flycast-src/shell/android-studio/flycast/src/main/java/com/flycast/emulator/AndroidStorage.java")
+          s = p.read_text()
+          old = '        intent = Intent.createChooser(intent, description);'
+          assert s.count(old) == 1, "Cambio inesperado en el código de AndroidStorage"
+          # El selector intermedio de aplicaciones puede ocultar el DocumentsUI
+          # o dejar sin seleccion una app TV. Pedimos primero el selector nativo.
+          new = '''        // Android TV: abrir directamente el proveedor de documentos.
+          // El selector intermedio de aplicaciones no es necesario para SAF.
+          if (!isDirectory)
+              intent = Intent.createChooser(intent, description);'''
+          s = s.replace(old, new)
+          p.write_text(s)
+          PY
+      - name: Vulkan obligatorio para prueba Android TV
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("flycast-src")
+          gradle = root / "shell/android-studio/flycast/build.gradle.kts"
+          s = gradle.read_text()
+          anchor = 'arguments += "-DUSE_OPENMP=OFF"'
+          assert anchor in s, "No se encontro CMake arguments"
+          s = s.replace(anchor, anchor + '\n                arguments += "-DUSE_VULKAN=ON"')
+          gradle.write_text(s)
+
+          # Vulkan por defecto, incluso en instalaciones nuevas.
+          opt = root / "core/cfg/option.h"
+          s = opt.read_text()
+          assert 'RenderType::OpenGL\n#endif\n' in s
+          s = s.replace('RenderType::OpenGL\n#endif\n', 'RenderType::Vulkan\n#endif\n', 1)
+          opt.write_text(s)
+
+          # Sin fallback silencioso: fallar visiblemente cuando Vulkan no inicializa.
+          switcher = root / "core/wsi/switcher.cpp"
+          s = switcher.read_text()
+          old = '''            // Fall back to OpenGL'''
+          # Las fuentes oficiales usan tabulaciones.
+          marker = 'WARN_LOG(RENDERER, "Vulkan init failed. Falling back to OpenGL (%s)", e.what());'
+          assert marker in s
+          s = s.replace(marker + '\n\t\t\tconfig::RendererType = RenderType::OpenGL;',
+                        'ERROR_LOG(RENDERER, "MOAI Vulkan-only: Vulkan init failed (%s)", e.what());\n\t\t\tthrow;')
+          switcher.write_text(s)
+          PY
+      - name: Compatibilidad con control remoto Google TV
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("flycast-src/shell/android-studio/flycast/src/main/java/com/flycast/emulator/BaseGLActivity.java")
+          s = p.read_text()
+          marker = '    @Override\n    public boolean onKeyUp(int keyCode, KeyEvent event) {'
+          assert s.count(marker) == 1
+          helper = '''    // Controles de TV: las flechas son teclas, no ejes de joystick.
+          // El centro del D-pad se transforma en Enter para el menu ImGui.
+          private boolean handleTvRemoteKey(int keyCode, KeyEvent event, boolean pressed) {
+              InputDevice device = event.getDevice();
+              if (device != null
+                      && (device.getSources() & InputDevice.SOURCE_CLASS_JOYSTICK) == InputDevice.SOURCE_CLASS_JOYSTICK)
+                  return false; // preservar comportamiento del gamepad
+              int mapped;
+              switch (keyCode) {
+                  case KeyEvent.KEYCODE_DPAD_UP:
+                  case KeyEvent.KEYCODE_DPAD_DOWN:
+                  case KeyEvent.KEYCODE_DPAD_LEFT:
+                  case KeyEvent.KEYCODE_DPAD_RIGHT:
+                      mapped = keyCode;
+                      break;
+                  case KeyEvent.KEYCODE_DPAD_CENTER:
+                  case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                      mapped = KeyEvent.KEYCODE_ENTER;
+                      break;
+                  default:
+                      return false;
+              }
+              return InputDeviceManager.getInstance().keyboardEvent(mapped, pressed);
+          }
+
+          '''
+          s = s.replace(marker, helper + marker)
+          up = '    public boolean onKeyUp(int keyCode, KeyEvent event) {\n'
+          down = '    public boolean onKeyDown(int keyCode, KeyEvent event) {\n'
+          assert s.count(up) == 1 and s.count(down) == 1
+          s = s.replace(up, up + '        if (handleTvRemoteKey(keyCode, event, false)) return true;\n')
+          s = s.replace(down, down + '        if (handleTvRemoteKey(keyCode, event, true)) return true;\n')
+          p.write_text(s)
+          PY
+      - name: Instalar explorador propio de Android TV y proveedor SAF
+        run: |
+          set -euo pipefail
+          SRC="flycast-src/shell/android-studio/flycast/src/main"
+          cp moai-project/optional-flycast/patches/MoaiTvPicker.java "$SRC/java/com/flycast/emulator/MoaiTvPicker.java"
+          cp moai-project/optional-flycast/patches/MoaiTvDocumentsProvider.java "$SRC/java/com/flycast/emulator/MoaiTvDocumentsProvider.java"
+          python3 moai-project/optional-flycast/patches/apply_tv_picker.py
+      - name: Compilar APK con Gradle instalado (sin wrapper)
+        working-directory: flycast-src/shell/android-studio
+        run: gradle --no-daemon :flycast:assembleRelease
+      - name: Publicar APK de prueba
+        uses: actions/upload-artifact@v4
+        with:
+          name: MOAI-Flycast-TV-Vulkan-Optional
+          path: flycast-src/shell/android-studio/flycast/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publicar APK opcional sin afectar MOAI estable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK=$(find flycast-src/shell/android-studio/flycast/build/outputs/apk/release -maxdepth 1 -name '*.apk' -type f | head -1)
+          test -s "$APK"
+          cp "$APK" MOAI-Flycast-TV-Vulkan.apk
+          gh release create v2.7-moai-tv MOAI-Flycast-TV-Vulkan.apk --title "Motor Flycast TV opcional para MOAI" --notes "Aplicación nativa Flycast con Vulkan, control remoto y selector de carpetas de Android TV. Se instala solo si se elige desde MOAI Lite Deluxe." --latest=false || gh release upload v2.7-moai-tv MOAI-Flycast-TV-Vulkan.apk --clobber
