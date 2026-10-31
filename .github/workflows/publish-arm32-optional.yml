@@ -1,0 +1,60 @@
+name: Publish official MOAI optional Flycast ARM32 Vulkan split
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'modules/payload/**'
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble signed ARM32 split APK and validate integrity
+        run: |
+          set -euo pipefail
+          test -s modules/payload/flycast-vulkan-arm32.json
+          test -s modules/payload/chunk_000.txt
+          cat modules/payload/chunk_*.txt | base64 -d > /tmp/flycast_core_arm32.apk
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          m=json.loads(pathlib.Path('modules/payload/flycast-vulkan-arm32.json').read_text())
+          apk=pathlib.Path('/tmp/flycast_core_arm32.apk')
+          assert m['schema']==1
+          assert m['abi']=='armeabi-v7a' and m['split']=='flycast_core'
+          assert m['package']=='com.infomak.moailite.flycastnative'
+          assert m['versionCode']==58
+          assert apk.stat().st_size==m['size']
+          assert hashlib.sha256(apk.read_bytes()).hexdigest()==m['sha256']
+          print("PUBLIC_ARM32_MODULE_VERIFIED", apk.stat().st_size, m['sha256'])
+          PY
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          test -x "$AAPT"
+          "$AAPT" dump badging /tmp/flycast_core_arm32.apk | head -3 | grep "split='flycast_core'"
+      - name: Publish downloadable signed split as public prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=flycast-vulkan-arm32-r1
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" /tmp/flycast_core_arm32.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "MOAI Flycast Vulkan ARM32 · optional core r1" \
+              --notes "Signed optional armeabi-v7a Flycast Vulkan split APK. Installs into the matching MOAI Lite Deluxe experimental base package. No ROMs or BIOS included. Based on flyinghead/flycast commit 1b63c8a3677cc8eb1292863c4fe8fc8f94674fc8 with MOAI Vulkan patches." \
+              --prerelease
+          else
+            gh release upload "$TAG" /tmp/flycast_core_arm32.apk --clobber --repo "$GITHUB_REPOSITORY"
+          fi
+      - name: Activate public update manifest
+        run: |
+          set -euo pipefail
+          cp modules/payload/flycast-vulkan-arm32.json modules/flycast-vulkan-arm32.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add modules/flycast-vulkan-arm32.json
+          git commit -m "publish: enable verified ARM32 Flycast Vulkan download metadata" || true
+          git push origin HEAD:main
