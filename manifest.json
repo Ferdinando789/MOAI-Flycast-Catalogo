@@ -1,6 +1,60 @@
 {
   "schemaVersion": 1,
   "catalog": "MOAI Flycast",
-  "systems": ["Dreamcast", "Naomi", "Naomi 2", "Atomiswave"],
-  "games": []
+  "systems": [
+    "Dreamcast",
+    "Naomi",
+    "Naomi 2",
+    "Atomiswave"
+  ],
+  "games": [
+    {
+      "id": "crazy-taxi-europe",
+      "title": "Crazy Taxi",
+      "system": "Dreamcast",
+      "entry": "Crazy.Taxi.Europe.chd",
+      "files": [
+        {
+          "path": "Crazy.Taxi.Europe.chd",
+          "url": "https://github.com/Ferdinando789/MOAI-Flycast-Catalogo/releases/download/juegos-flycast-v1/Crazy.Taxi.Europe.chd",
+          "size": 77040752,
+          "sha256": "cd4a42b648ffd78c854e729117076ff99e73dcc696929c5a9b079a59597ac310"
+        }
+      ]
+    },
+    {
+      "id": "soulcalibur-europe",
+      "title": "Soulcalibur",
+      "system": "Dreamcast",
+      "entry": "Soulcalibur.Europe.EnFrDeEs.chd",
+      "files": [
+        {
+          "path": "Soulcalibur.Europe.EnFrDeEs.chd",
+          "url": "https://github.com/Ferdinando789/MOAI-Flycast-Catalogo/releases/download/juegos-flycast-v1/Soulcalibur.Europe.EnFrDeEs.chd",
+          "size": 628193585,
+          "sha256": "f53b932ca0fa6796a0d44fdf76a8d224bc85c7d42a4af51aabce50cdad7fe8b2"
+        }
+      ]
+    },
+    {
+      "id": "virtua-tennis-2-naomi",
+      "title": "Virtua Tennis 2",
+      "system": "Naomi",
+      "entry": "vtenis2c.zip",
+      "files": [
+        {
+          "path": "vtenis2c.zip",
+          "url": "https://github.com/Ferdinando789/MOAI-Flycast-Catalogo/releases/download/juegos-flycast-v1/Virtua.Tennis.2.zip",
+          "size": 81248773,
+          "sha256": "d8ed26f13d37424f55d00751b20f59256177b1bc37bb316f58d2eeceb5dfce56"
+        },
+        {
+          "path": "naomi.zip",
+          "url": "https://github.com/Ferdinando789/MOAI-Flycast-Catalogo/releases/download/juegos-flycast-v1/BIOS.Virtua.Tenis.2.zip",
+          "size": 10403870,
+          "sha256": "3a22e867bc1881401c288a737fc6fd4f8190975c9f8ee699d24442b3a71a3206"
+        }
+      ]
+    }
+  ]
 }
