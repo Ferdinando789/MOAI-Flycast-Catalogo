@@ -43,7 +43,8 @@ jobs:
           if [ ! -x "$AAPT" ]; then
             "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0"
           fi
-          "$AAPT" dump badging /tmp/flycast_core_arm32.apk | head -5
+          "$AAPT" dump badging /tmp/flycast_core_arm32.apk > /tmp/flycast-badging.txt
+          head -5 /tmp/flycast-badging.txt
           "$AAPT" dump xmltree /tmp/flycast_core_arm32.apk AndroidManifest.xml | grep flycast_core
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs /tmp/flycast_core_arm32.apk
       - name: Publish optional signed module as GitHub Release
