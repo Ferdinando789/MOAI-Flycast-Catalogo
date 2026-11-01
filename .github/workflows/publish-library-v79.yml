@@ -1,0 +1,83 @@
+name: Publish MOAI Flycast library v0.1.79 and ARM32 core r2
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['modules/payload-v79/bundle.json']
+permissions:
+  contents: write
+concurrency:
+  group: publish-flycast-arm32-r2
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble and verify signed base and core
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/moai-release
+          cat modules/payload-v79/core/chunk_*.txt | base64 -d > /tmp/moai-release/flycast_core_arm32.apk
+          cat modules/payload-v79/base/chunk_*.txt | base64 -d > /tmp/moai-release/MOAI-Lite-Deluxe-v0.1.79-Flycast-ARM32.apk
+          cp modules/payload-v79/flycast-vulkan-arm32-v79.json /tmp/moai-release/flycast-vulkan-arm32-v79.json
+          python3 - <<'PY'
+          import hashlib,json,pathlib,zipfile
+          root=pathlib.Path('/tmp/moai-release')
+          bundle=json.loads(pathlib.Path('modules/payload-v79/bundle.json').read_text())
+          m=json.loads((root/'flycast-vulkan-arm32-v79.json').read_text())
+          assert m['versionCode']==79 and m['abi']=='armeabi-v7a' and m['split']=='flycast_core'
+          assert m['package']=='com.infomak.moailite.flycastnative'
+          assert m['download_url']=='https://github.com/Ferdinando789/MOAI-Flycast-Catalogo/releases/download/flycast-vulkan-arm32-r2/flycast_core_arm32.apk'
+          for name,meta in [('flycast_core_arm32.apk',m),('MOAI-Lite-Deluxe-v0.1.79-Flycast-ARM32.apk',bundle['base'])]:
+              p=root/name
+              assert p.stat().st_size==meta['size']
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==meta['sha256']
+              with zipfile.ZipFile(p) as z:
+                  assert z.testzip() is None
+                  assert not any(n.startswith('lib/arm64-v8a/') for n in z.namelist())
+          print('Verified signed APK sizes, hashes, ZIP entries and ARM32 architecture')
+          PY
+      - name: Verify Android manifests and matching signatures
+        run: |
+          set -euo pipefail
+          TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          if [ ! -x "$TOOLS/aapt" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;35.0.0'
+          fi
+          for APK in /tmp/moai-release/*.apk; do
+            "$TOOLS/aapt" dump badging "$APK" > /tmp/badging.txt
+            grep "name='com.infomak.moailite.flycastnative' versionCode='79'" /tmp/badging.txt
+            "$TOOLS/apksigner" verify --verbose "$APK"
+          done
+          "$TOOLS/apksigner" verify --print-certs /tmp/moai-release/flycast_core_arm32.apk > /tmp/core-cert.txt
+          "$TOOLS/apksigner" verify --print-certs /tmp/moai-release/MOAI-Lite-Deluxe-v0.1.79-Flycast-ARM32.apk > /tmp/base-cert.txt
+          diff <(grep '^Signer #1 certificate SHA-256' /tmp/core-cert.txt) <(grep '^Signer #1 certificate SHA-256' /tmp/base-cert.txt)
+          "$TOOLS/aapt" dump xmltree /tmp/moai-release/flycast_core_arm32.apk AndroidManifest.xml > /tmp/split.txt
+          grep flycast_core /tmp/split.txt
+      - name: Publish signed test APK and optional core
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=flycast-vulkan-arm32-r2
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" /tmp/moai-release/* --clobber
+          else
+            gh release create "$TAG" /tmp/moai-release/* --prerelease \
+              --title 'MOAI Lite Deluxe 0.1.79 - Biblioteca Flycast Vulkan ARM32' \
+              --notes 'Experimental MOAI library with direct game launch, local and USB scanning, verified GitHub downloads and Android 14 non-killing split installation. Install the base APK; download the engine from MOAI. No ROMs or BIOS included. Device verification pending.'
+          fi
+      - name: Activate module for v0.1.79
+        run: |
+          set -euo pipefail
+          cp /tmp/moai-release/flycast-vulkan-arm32-v79.json modules/flycast-vulkan-arm32-v79.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add modules/flycast-vulkan-arm32-v79.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'publish signed Flycast ARM32 core for MOAI library v0.1.79'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
