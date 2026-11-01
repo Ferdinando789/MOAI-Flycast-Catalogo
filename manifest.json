@@ -55,6 +55,20 @@
           "sha256": "3a22e867bc1881401c288a737fc6fd4f8190975c9f8ee699d24442b3a71a3206"
         }
       ]
+    },
+    {
+      "id": "virtua-striker-2-2000-1-pal",
+      "title": "Virtua Striker 2 ver. 2000.1",
+      "system": "Dreamcast",
+      "entry": "2003-11-14-Virtua-striker-2-ver-2000.1-pal-DCP.cdi",
+      "files": [
+        {
+          "path": "2003-11-14-Virtua-striker-2-ver-2000.1-pal-DCP.cdi",
+          "url": "https://github.com/Ferdinando789/MOAI-Flycast-Catalogo/releases/download/juegos-flycast-v1/2003-11-14-Virtua-striker-2-ver-2000.1-pal-DCP.cdi",
+          "size": 269570868,
+          "sha256": "82ebdab346886e516de43e7a6076b65ef771d1c2c121f366ad40d926c0bd1338"
+        }
+      ]
     }
   ]
 }
