@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/publish-arm32-optional.yml'
+      - 'modules/payload/flycast-vulkan-arm32.json'
 permissions:
   contents: write
 concurrency:
@@ -16,12 +16,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch signed optional ARM32 split from MOAI build staging
+      - name: Reassemble verified signed ARM32 module from public chunks
         run: |
           set -euo pipefail
-          SOURCE=https://raw.githubusercontent.com/Ferdinando789/MOAI-Lite-Deluxe/experimental/flycast-arm32-core-staging/distribution/arm32
-          curl --fail --location --retry 3 --output /tmp/flycast_core_arm32.apk "$SOURCE/flycast_core_arm32.apk"
-          curl --fail --location --retry 3 --output /tmp/flycast-vulkan-arm32.json "$SOURCE/flycast-vulkan-arm32.json"
+          test -s modules/payload/flycast-vulkan-arm32.json
+          test -s modules/payload/chunk_000.txt
+          cat modules/payload/chunk_*.txt | base64 -d > /tmp/flycast_core_arm32.apk
+          cp modules/payload/flycast-vulkan-arm32.json /tmp/flycast-vulkan-arm32.json
           python3 - <<'PY'
           import hashlib,json,pathlib
           apk=pathlib.Path('/tmp/flycast_core_arm32.apk')
