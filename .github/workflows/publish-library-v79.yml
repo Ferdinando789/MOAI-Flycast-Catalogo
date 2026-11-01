@@ -19,7 +19,22 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/moai-release
-          cat modules/payload-v79/core/chunk_*.txt | base64 -d > /tmp/moai-release/flycast_core_arm32.apk
+          curl --fail --location --retry 3 'https://github.com/Ferdinando789/MOAI-Flycast-Catalogo/releases/download/flycast-vulkan-arm32-r1/flycast_core_arm32.apk' -o /tmp/core-r1.apk
+          python3 - <<'PYCORE'
+          import base64,hashlib,json,pathlib
+          patch=json.loads(pathlib.Path('modules/payload-v79/core-patch.json').read_text())
+          original=pathlib.Path('/tmp/core-r1.apk').read_bytes()
+          assert hashlib.sha256(original).hexdigest()==patch['source_sha256']
+          data=bytearray(original)
+          for span in patch['spans']:
+              block=base64.b64decode(span['data'],validate=True)
+              offset=span['offset']
+              assert 0<=offset<=len(data)-len(block)
+              data[offset:offset+len(block)]=block
+          assert len(data)==patch['size']
+          assert hashlib.sha256(data).hexdigest()==patch['target_sha256']
+          pathlib.Path('/tmp/moai-release/flycast_core_arm32.apk').write_bytes(data)
+          PYCORE
           cat modules/payload-v79/base/chunk_*.txt | base64 -d > /tmp/moai-release/MOAI-Lite-Deluxe-v0.1.79-Flycast-ARM32.apk
           cp modules/payload-v79/flycast-vulkan-arm32-v79.json /tmp/moai-release/flycast-vulkan-arm32-v79.json
           python3 - <<'PY'
