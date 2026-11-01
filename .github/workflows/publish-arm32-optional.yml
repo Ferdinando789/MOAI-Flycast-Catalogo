@@ -1,60 +1,76 @@
-name: Publish official MOAI optional Flycast ARM32 Vulkan split
+name: Publish verified MOAI Flycast Vulkan ARM32 optional module
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - 'modules/payload/**'
+      - '.github/workflows/publish-arm32-optional.yml'
 permissions:
   contents: write
-
+concurrency:
+  group: publish-flycast-arm32-r1
+  cancel-in-progress: false
 jobs:
   publish:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble signed ARM32 split APK and validate integrity
+      - name: Fetch signed optional ARM32 split from MOAI build staging
         run: |
           set -euo pipefail
-          test -s modules/payload/flycast-vulkan-arm32.json
-          test -s modules/payload/chunk_000.txt
-          cat modules/payload/chunk_*.txt | base64 -d > /tmp/flycast_core_arm32.apk
+          SOURCE=https://raw.githubusercontent.com/Ferdinando789/MOAI-Lite-Deluxe/experimental/flycast-arm32-core-staging/distribution/arm32
+          curl --fail --location --retry 3 --output /tmp/flycast_core_arm32.apk "$SOURCE/flycast_core_arm32.apk"
+          curl --fail --location --retry 3 --output /tmp/flycast-vulkan-arm32.json "$SOURCE/flycast-vulkan-arm32.json"
           python3 - <<'PY'
-          import hashlib, json, pathlib
-          m=json.loads(pathlib.Path('modules/payload/flycast-vulkan-arm32.json').read_text())
+          import hashlib,json,pathlib
           apk=pathlib.Path('/tmp/flycast_core_arm32.apk')
-          assert m['schema']==1
-          assert m['abi']=='armeabi-v7a' and m['split']=='flycast_core'
+          m=json.loads(pathlib.Path('/tmp/flycast-vulkan-arm32.json').read_text())
+          assert m['schema']==1 and m['abi']=='armeabi-v7a'
+          assert m['split']=='flycast_core'
           assert m['package']=='com.infomak.moailite.flycastnative'
           assert m['versionCode']==58
-          assert apk.stat().st_size==m['size']
-          assert hashlib.sha256(apk.read_bytes()).hexdigest()==m['sha256']
-          print("PUBLIC_ARM32_MODULE_VERIFIED", apk.stat().st_size, m['sha256'])
+          assert m['size']==apk.stat().st_size
+          assert m['sha256']==hashlib.sha256(apk.read_bytes()).hexdigest()
+          assert m['download_url']=='https://github.com/Ferdinando789/MOAI-Flycast-Catalogo/releases/download/flycast-vulkan-arm32-r1/flycast_core_arm32.apk'
+          print('Verified signed ARM32 split:',m['size'],m['sha256'])
           PY
+      - name: Verify split Android package metadata
+        run: |
+          set -euo pipefail
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
-          test -x "$AAPT"
-          "$AAPT" dump badging /tmp/flycast_core_arm32.apk | head -3 | grep "split='flycast_core'"
-      - name: Publish downloadable signed split as public prerelease
+          if [ ! -x "$AAPT" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0"
+          fi
+          "$AAPT" dump badging /tmp/flycast_core_arm32.apk | head -5
+          "$AAPT" dump xmltree /tmp/flycast_core_arm32.apk AndroidManifest.xml | grep flycast_core
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs /tmp/flycast_core_arm32.apk
+      - name: Publish optional signed module as GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          mkdir -p /tmp/release
+          cp /tmp/flycast_core_arm32.apk /tmp/release/flycast_core_arm32.apk
           TAG=flycast-vulkan-arm32-r1
-          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TAG" /tmp/flycast_core_arm32.apk \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "MOAI Flycast Vulkan ARM32 · optional core r1" \
-              --notes "Signed optional armeabi-v7a Flycast Vulkan split APK. Installs into the matching MOAI Lite Deluxe experimental base package. No ROMs or BIOS included. Based on flyinghead/flycast commit 1b63c8a3677cc8eb1292863c4fe8fc8f94674fc8 with MOAI Vulkan patches." \
-              --prerelease
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" /tmp/release/flycast_core_arm32.apk --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release upload "$TAG" /tmp/flycast_core_arm32.apk --clobber --repo "$GITHUB_REPOSITORY"
+            gh release create "$TAG" /tmp/release/flycast_core_arm32.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "MOAI Flycast Vulkan ARM32 - optional module r1" \
+              --notes "Signed optional armeabi-v7a split APK for MOAI experimental base versionCode 58. No ROMs or BIOS included." \
+              --prerelease
           fi
-      - name: Activate public update manifest
+      - name: Activate catalog manifest after release upload
         run: |
           set -euo pipefail
-          cp modules/payload/flycast-vulkan-arm32.json modules/flycast-vulkan-arm32.json
+          mkdir -p modules
+          cp /tmp/flycast-vulkan-arm32.json modules/flycast-vulkan-arm32.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add modules/flycast-vulkan-arm32.json
-          git commit -m "publish: enable verified ARM32 Flycast Vulkan download metadata" || true
-          git push origin HEAD:main
+          if ! git diff --cached --quiet; then
+            git commit -m "publish verified ARM32 Flycast module manifest"
+            git push origin HEAD:main
+          fi
