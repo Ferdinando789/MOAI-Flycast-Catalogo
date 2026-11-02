@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "abi": "armeabi-v7a",
+  "package": "com.infomak.moailite.flycastnative",
+  "split": "flycast_core",
+  "versionCode": 82,
+  "size": 39477743,
+  "sha256": "a2c514549d9cf227032cba48a6718c52e068c5b0aa787f77865a9ae3be52cf3d",
+  "download_url": "https://github.com/Ferdinando789/MOAI-Flycast-Catalogo/releases/download/flycast-vulkan-arm32-r2/flycast_core_arm32_v82.apk"
+}
