@@ -69,6 +69,20 @@
           "sha256": "82ebdab346886e516de43e7a6076b65ef771d1c2c121f366ad40d926c0bd1338"
         }
       ]
+    },
+    {
+      "id": "marvel-vs-capcom-europe",
+      "title": "Marvel vs. Capcom: Clash of Super Heroes",
+      "system": "Dreamcast",
+      "entry": "Marvel.vs.Capcom.-.Clash.of.Super.Heroes.Europe.chd",
+      "files": [
+        {
+          "path": "Marvel.vs.Capcom.-.Clash.of.Super.Heroes.Europe.chd",
+          "url": "https://github.com/Ferdinando789/MOAI-Flycast-Catalogo/releases/download/juegos-flycast-v1/Marvel.vs.Capcom.-.Clash.of.Super.Heroes.Europe.chd",
+          "size": 293556684,
+          "sha256": "ba80c0fdad4ec9bded9b45f28700fbc4c7a68a12ecf041606c22f7254b6d8476"
+        }
+      ]
     }
   ]
 }
